@@ -1,0 +1,255 @@
+---
+output: html_document
+---
+## Маглий Екатерина
+
+## Лабораторная 2
+
+### Задание 16
+
+Используйте файл outcome-of-care-measures.csv Напишите функцию, которая принимает на вход название города и допустимый диапазон смертности и выдает на выход список, в котором для каждого из трех заболеваний указаны названия тех больниц уровень смертности в которых не превышает указанный диапазон.
+
+Считаем данные из файлы:
+
+```{r}
+df <- read.csv('data/outcome-of-care-measures.csv')
+```
+
+Основная функция
+
+```{r}
+find_cities <- function(df, city, min_deaths, max_deaths) {
+  outcomes <- c("heart attack", "heart failure", "pneumonia")
+  
+  df <- df[df$City == city, ]
+  result = data.frame(outcomes = outcomes, hospitals = "")
+  
+  for (outcome in outcomes) {
+    
+    switch(outcome, 'heart attack' = {
+      col_min = 13
+      col_max = 14
+    }, 'heart failure' = {
+      col_min = 19
+      col_max = 20
+    }, 'pneumonia' = {
+      col_min = 25
+      col_max = 26
+    })
+    
+    for (i in 1:nrow(df)) {
+      if (df[i, col_min] >= min_deaths & df[i, col_max] <= max_deaths) {
+        result[result$outcomes == outcome, 'hospitals'] <- paste(
+          as.character(df$Hospital.Name[i]),
+          result[result$outcomes == outcome, 'hospitals'],
+          sep = ", "
+          )
+      }
+    }
+  }
+  
+  result$hospitals <- gsub(", $", "", result$hospitals)
+  
+  return(result)
+}
+```
+
+Протестируем функцию:
+
+```{r}
+ans <- find_cities(df, 'MONTGOMERY', 13, 22)
+ans
+```
+
+Получили датафрейм, где для каждого из трех заболеваний перечислены (через запятую) названия больниц, уровень смертности в которых попадает в указанный диапазон. Можно проверить, взглянув на исходные данные. Возьмем город MONTGOMERY и 13, 14 столбцы, которые соответствуют верхней и нежней оценке смертности от приступов сердца (первая строчка в датафрейме выше):
+
+```{r}
+subset(df, City == 'MONTGOMERY', select = c(2, 13, 14))
+```
+
+### Задание 3
+
+Используйте файл ExpImp.Rdata Создайте data.frame в котором содержится только информация по федеральным округам. Добавьте в него колонки, в которых содержится суммарный экспорт и импорт по федеральным округам. Напишите функцию, которая в полученном Вами data.frame находит федеральные округа, в которых суммарные экспорт превышает суммарный импорт.
+
+Загрузим данные:
+
+```{r}
+load('data/ExpImp.RData')
+```
+
+Создадим функцию для создания датафрейма
+
+```{r}
+create_df <- function(data) {
+  # выбираем только федеральные округа
+  pattern = '*федеральный округ'
+  df <- data.frame(data)
+  df <- df[grep(pattern, df$Регион), ]
+  
+  # экспорт и импорт
+  df$ЭкспСумм = 0
+  df$ИмпСумм = 0
+  for (i in 1:nrow(df)) {
+    for (j in grep('*Экспорт', names(df))) {
+      df$ЭкспСумм[i] <- as.numeric(df$ЭкспСумм[i]) + as.numeric(df[i, j])
+    }
+    for (k in grep('*Импорт', names(df))) {
+      df$ИмпСумм[i] <- as.numeric(df$ИмпСумм[i]) + as.numeric(df[i, k])
+    }
+  }
+  
+  return (df)
+}
+```
+
+Создадим датафрейм
+
+```{r}
+df <- create_df(ExpImp)
+head(df)
+```
+
+Напишем функцию поиска по датафрейму, которая возвращает список округов
+
+```{r}
+find_func <- function(df) {
+  result <- vector()
+  for (i in 1:nrow(df)) {
+    if (as.numeric(df$ЭкспСумм[i]) > as.numeric(df$ИмпСумм[i])) {
+      result <- c(result, df$Регион[i])
+    }
+  }
+  return(result)
+}
+```
+
+В результате получили:
+
+```{r}
+find_func(df)
+```
+
+В этих округах суммарный экспорт превышает суммарный импорт.
+
+## Лабораторная 3
+
+### Задание 2
+
+*trades.RData* Объедините таблицы в одну, уберите столбец с территорией торговли, т.к. там только Евросоюз, оставим только строки с экспортом и импортом, вынесете данные по экспорту и импорту в отдельные переменные. Постройте линейный график изменения экспорта по годам обозначив разные группы экспортируемых товаров разным цветом. Подпишите значения на графике. Отрегулируйте местоположение подписей так, чтобы рисунок был максимально наглядным. Придумайте новые названия графика и осей.
+
+Подключим библиотеку, загругим данные:
+
+```{r}
+library(tidyverse)
+load('data/trades.RData')
+```
+
+Соберем все таблицы в одну:
+
+```{r}
+trades <- bind_rows(trades)
+```
+
+Разобьем импорт и экспорт по разным таблицам и удалим столбец geo
+
+```{r}
+import <- trades %>%
+  filter(indic_et == 'Imports in million of ECU/EURO') %>%
+  select(!c(indic_et, geo))
+
+export <- trades %>%
+  filter(indic_et == 'Exports in million of ECU/EURO') %>%
+  select(!c(indic_et, geo))
+```
+
+Подготовим таблицу по экспорту к построению диаграммы, просуммируем значения, сгруппировав по категориям и времени:
+
+```{r}
+export <- export %>%
+  group_by(sitc06, time) %>%
+  summarise(values = sum(values), .groups = 'drop')
+```
+
+Построим график:
+
+```{r}
+ggplot(data=export, aes(x = time, y = values, group = sitc06)) +
+  geom_line(aes(color = sitc06)) +
+  geom_point(aes(color = sitc06)) +
+  labs(title = 'Сhanges in export values from 2008 to 2019',
+       x = 'Years', y = 'Sum values of export', color = 'Categories') + 
+  theme_classic()
+```
+
+### Задание 7
+
+*ExpImp.Rdata* Приведите данные к формату tidydata. Отобразите суммарные значения экспорта и импорта по субъектам федерации, находящимся в Центральном федеральном округе, в виде столбчатой диаграммы [сгруппировав значения по названию субъекта федерации]. Экспорт и импорт обозначьте разными цветами. Сделайте второй график, наложив столбцы экспорта и импорта один на другой и подписав значения разниц между экспортом и ипортом.
+
+Подключим библиотеку, загругим данные:
+
+```{r}
+library(tidyverse)
+load('data/ExpImp.Rdata')
+```
+
+В таблице есть значения по типу '-', заменим их нулями и преведем все к числовому типу, затем к типу tibble
+
+```{r}
+ExpImp <- replace(ExpImp, ExpImp == '-', '0.0')
+ExpImp[, c(2:13)] <- sapply(ExpImp[, c(2:13)], as.numeric)
+ExpImp <- as_tibble(ExpImp)
+```
+
+Подготовим список регионов, относящихся к Центральному федиральному округу:
+
+```{r}
+regions = c('Белгородская область', 'Брянская область', 'Владимирская область', 
+            'Воронежская область',	'Ивановская область', 'Калужская область',
+            'Костромская область',	'Курская область',	'Липецкая область',
+            'г. Москва', 'Московская область',	'Орловская область',
+            'Рязанская область', 'Смоленская область', 'Тамбовская область',
+            'Тверская область', 'Тульская область', 'Ярославская область')
+```
+
+Разобьем данные на импорт и экспорт, заодно подсчитав суммарные знечения:
+
+```{r}
+Imp <- ExpImp %>%
+  filter(Регион %in% regions) %>%
+  select(c(1, grep('*Импорт', names(ExpImp)))) %>%
+  mutate(sumImp = rowSums(across(where(is.numeric)))) %>%
+  select(1, last_col())
+
+Exp <- ExpImp %>%
+  filter(Регион %in% regions) %>%
+  select(c(1, grep('*Экспорт', names(ExpImp)))) %>%
+  mutate(sumExp = rowSums(across(where(is.numeric)))) %>%
+  select(1, last_col())
+```
+
+Теперь соберем обратно в одну таблицу, дополнительно найдя разность между экспортом и импортом:
+
+```{r}
+ExpImp <- Exp %>%
+  left_join(Imp, by = 'Регион') %>%
+  mutate(diff = sumExp - sumImp)
+```
+
+Построим график. Сразу будем использовать логарифмический масштаб для оси со значениями импорта/экспотра, т.к. Москва очень сильно превосходит остальные регионы. Разница между импортом и экспортом показана для каждого региона значком дельта Δ
+
+```{r}
+ggplot(ExpImp, aes(x = Регион, y = sumExp)) +
+  geom_col(aes(fill = "Экспорт"), 
+           width = 0.45,
+           position = position_nudge(x = -0.225)) +
+  geom_col(aes(y = sumImp, fill = "Импорт"), 
+           width = 0.45,
+           position = position_nudge(x = 0.225)) +
+  coord_flip() +
+  scale_y_continuous(trans='log10') +
+  geom_text(aes(label = paste('Δ:' , diff)), size = 3.5,
+            position = position_stack(vjust = 0.5), hjust = 1) +
+  labs(title = 'Total import/export values for the Сentral district', 
+       x = 'Region', y = 'Value of Import/Export (log scale)', fill = '') 
+
+```
