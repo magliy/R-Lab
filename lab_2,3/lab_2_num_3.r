@@ -1,7 +1,3 @@
-setwd("C:\\Users\\Дмитрий\\PycharmProjects\\studyR")
-
-
-
 create_df <- function(data) {
   # выбираем только федеральные округа
   pattern = '*федеральный округ'
